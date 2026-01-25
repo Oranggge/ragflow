@@ -48,9 +48,14 @@ const storage = {
 
 export const getAuthorization = () => {
   const auth = getSearchValue('auth');
-  const authorization = auth
+  let authorization = auth
     ? 'Bearer ' + auth
     : storage.getAuthorization() || '';
+
+  // Ensure Bearer prefix exists (handles legacy storage without prefix)
+  if (authorization && !authorization.startsWith('Bearer ')) {
+    authorization = 'Bearer ' + authorization;
+  }
 
   return authorization;
 };

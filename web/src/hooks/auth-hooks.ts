@@ -25,7 +25,7 @@ export const useOAuthCallback = () => {
 
     const auth = currentQueryParameters.get('auth');
     if (auth) {
-      authorizationUtil.setAuthorization(auth);
+      authorizationUtil.setAuthorization('Bearer ' + auth);
       newQueryParameters.delete('auth');
       setSearchParams(newQueryParameters);
       navigate('/');

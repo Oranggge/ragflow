@@ -107,7 +107,12 @@ def _load_user():
         try:
             authorization = request.headers.get("Authorization")
             if len(authorization.split()) == 2:
-                objs = APIToken.query(token=authorization.split()[1])
+                token_value = authorization.split()[1]
+                # Try 'token' field first (standard API tokens)
+                objs = APIToken.query(token=token_value)
+                # Fallback to 'beta' field (shared chat tokens)
+                if not objs:
+                    objs = APIToken.query(beta=token_value)
                 if objs:
                     user = UserService.query(id=objs[0].tenant_id, status=StatusEnum.VALID.value)
                     if user:
