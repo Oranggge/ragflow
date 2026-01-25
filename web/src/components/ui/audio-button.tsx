@@ -1,5 +1,3 @@
-import { AudioRecorder, useAudioRecorder } from 'react-audio-voice-recorder';
-
 import { Button } from '@/components/ui/button';
 import { Authorization } from '@/constants/authorization';
 import { cn } from '@/lib/utils';
@@ -7,9 +5,33 @@ import api from '@/utils/api';
 import { getAuthorization } from '@/utils/authorization-util';
 import { Loader2, Mic, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import {
+  AudioRecorder,
+  useAudioRecorder as useAudioRecorderHook,
+} from 'react-audio-voice-recorder';
 import { useIsDarkTheme } from '../theme-provider';
 import { Input } from './input';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
+
+// Check if we're in a secure context (HTTPS or localhost)
+const isSecureContext = () => {
+  if (typeof window === 'undefined') return false;
+  // window.isSecureContext is the standard way to check
+  if (window.isSecureContext !== undefined) return window.isSecureContext;
+  // Fallback check
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  return (
+    protocol === 'https:' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]'
+  );
+};
+
+// Wrap the hook to only use it in secure contexts
+const useAudioRecorder =
+  isSecureContext() && navigator?.mediaDevices ? useAudioRecorderHook : null;
 const VoiceVisualizer = ({ isRecording }: { isRecording: boolean }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -30,8 +52,9 @@ const VoiceVisualizer = ({ isRecording }: { isRecording: boolean }) => {
       streamRef.current = stream;
 
       // Create audio context and analyzer
-      const audioContext = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+      const audioContext = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
       audioContextRef.current = audioContext;
 
       const analyser = audioContext.createAnalyser();
@@ -198,6 +221,14 @@ const VoiceInputBox = ({
     </div>
   );
 };
+// Stub hook for when audio recording is not available
+const useAudioRecorderStub = () => ({
+  startRecording: () => {},
+  stopRecording: () => {},
+  recordingBlob: null,
+  isRecording: false,
+});
+
 export const AudioButton = ({
   onOk,
 }: {
@@ -209,8 +240,18 @@ export const AudioButton = ({
   const [recordingTime, setRecordingTime] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const recorderControls = useAudioRecorder();
+  const [showSecureContextError, setShowSecureContextError] = useState(false);
+
+  // Use the real hook if available, otherwise use stub
+  const recorderControls = useAudioRecorder
+    ? useAudioRecorder()
+    : useAudioRecorderStub();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Check if audio recording is supported
+  const isAudioSupported = !!(
+    useAudioRecorder && navigator.mediaDevices?.getUserMedia
+  );
   // Handle logic after recording is complete
   const handleRecordingComplete = async (blob: Blob) => {
     setIsRecording(false);
@@ -272,6 +313,11 @@ export const AudioButton = ({
 
   //  Start recording
   const startRecording = () => {
+    // Check if audio recording is supported (requires HTTPS or localhost)
+    if (!isAudioSupported) {
+      setShowSecureContextError(true);
+      return;
+    }
     recorderControls.startRecording();
     setIsRecording(true);
     // setShowInputBox(true);
@@ -316,6 +362,54 @@ export const AudioButton = ({
   }, []);
   return (
     <div>
+      {/* Error popover for insecure context */}
+      <Popover
+        open={showSecureContextError}
+        onOpenChange={setShowSecureContextError}
+      >
+        <PopoverTrigger asChild>
+          <span />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 p-4">
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Microphone Not Available</h4>
+            <p className="text-xs text-muted-foreground">
+              Voice recording requires a secure connection (HTTPS) or localhost
+              access.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              You are currently accessing via HTTP on a LAN. To enable
+              microphone:
+            </p>
+            <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+              <li>
+                Access via{' '}
+                <code className="bg-muted px-1 rounded">https://</code> (may
+                need self-signed cert)
+              </li>
+              <li>
+                Or use SSH tunnel:{' '}
+                <code className="bg-muted px-1 rounded">
+                  ssh -L 8080:VM_IP:80 user@host
+                </code>{' '}
+                then access{' '}
+                <code className="bg-muted px-1 rounded">
+                  http://localhost:8080
+                </code>
+              </li>
+            </ul>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full mt-2"
+              onClick={() => setShowSecureContextError(false)}
+            >
+              Got it
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+
       {false && (
         <div className="flex flex-col items-center space-y-4">
           <div className="relative">
@@ -378,12 +472,6 @@ export const AudioButton = ({
         <Button
           variant="outline"
           size="sm"
-          // onMouseDown={() => {
-          //   startRecording();
-          // }}
-          // onMouseUp={() => {
-          //   stopRecording();
-          // }}
           onClick={() => {
             if (isRecording) {
               stopRecording();
@@ -403,20 +491,20 @@ export const AudioButton = ({
           ) : isRecording ? (
             <></>
           ) : (
-            // <Mic size={16} className="text-text-primary" />
-            // <Square size={12} className="text-text-primary" />
             <Mic size={16} />
           )}
         </Button>
       </div>
 
-      {/* Hide original component */}
-      <div className="hidden">
-        <AudioRecorder
-          onRecordingComplete={handleRecordingComplete}
-          recorderControls={recorderControls}
-        />
-      </div>
+      {/* Hide original component - only render if AudioRecorder is available */}
+      {AudioRecorder && (
+        <div className="hidden">
+          <AudioRecorder
+            onRecordingComplete={handleRecordingComplete}
+            recorderControls={recorderControls}
+          />
+        </div>
+      )}
     </div>
   );
 };
