@@ -39,7 +39,7 @@ settings.init_settings()
 __all__ = ["app"]
 
 app = Quart(__name__)
-app = cors(app, allow_origin="*")
+app = cors(app, allow_origin="*", expose_headers=["Authorization"])
 
 # openapi supported
 QuartSchema(app)
@@ -80,6 +80,10 @@ def _load_user():
     g.user = None
     if not authorization:
         return None
+
+    # Strip "Bearer " prefix if present
+    if authorization.startswith("Bearer "):
+        authorization = authorization[7:]
 
     try:
         access_token = str(jwt.loads(authorization))
